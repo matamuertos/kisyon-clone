@@ -1,42 +1,96 @@
 'use client'
 import { useState } from "react";
-import { auth } from "@/firebase/firebaseConfig";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
 import { useRouter } from "next/navigation";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import {
+  collection,
+  doc,
+  setDoc,
+  query,
+  where,
+  getDocs
+} from "firebase/firestore";
+import { auth, db } from "@/firebase/firebaseConfig";
 
-export default function LoginPage() {
+export default function Registro() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [esRegistro, setEsRegistro] = useState(false);
-  const [error, setError] = useState("");
+  const [nombreUsuario, setNombreUsuario] = useState("");
+  const [mensaje, setMensaje] = useState("");
   const router = useRouter();
 
-  const manejarSubmit = async (e) => {
+  const handleRegistro = async (e) => {
     e.preventDefault();
-    setError("");
+
+    const alias = nombreUsuario.trim();
+
+    // Validar alias
+    const aliasValido = /^[a-zA-Z0-9_]+$/.test(alias);
+    if (!alias) {
+      setMensaje("Debes elegir un nombre de usuario.");
+      return;
+    }
+    if (!aliasValido) {
+      setMensaje("El nombre de usuario solo puede contener letras, números y guiones bajos (_).");
+      return;
+    }
 
     try {
-      if (esRegistro) {
-        await createUserWithEmailAndPassword(auth, email, password);
-      } else {
-        await signInWithEmailAndPassword(auth, email, password);
+      // Verificar si el alias ya existe
+      const aliasQuery = query(collection(db, "usuarios"), where("nombreUsuario", "==", alias));
+      const aliasSnapshot = await getDocs(aliasQuery);
+
+      if (!aliasSnapshot.empty) {
+        setMensaje("Ese nombre de usuario ya está en uso. Elige otro.");
+        return;
       }
-      router.push("/enviar");
-    } catch (err) {
-      setError(err.message);
+
+      // Crear usuario en Auth
+      const userCred = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = userCred.user.uid;
+
+      // Crear documento en Firestore
+      await setDoc(doc(db, "usuarios", uid), {
+        email,
+        nombreUsuario: alias,
+        puntos: 0,
+        role: "user"
+      });
+
+      setMensaje("Registro exitoso 🎉 Redirigiendo...");
+      setEmail("");
+      setPassword("");
+      setNombreUsuario("");
+
+      setTimeout(() => {
+        router.push("/");
+      }, 2000); // 2 segundos
+
+    } catch (error) {
+      console.error("Error al registrar:", error);
+      setMensaje(error.message);
     }
   };
 
   return (
-    <div style={{ maxWidth: 400, margin: "40px auto", padding: 20, border: "1px solid #ccc", borderRadius: 8 }}>
-      <h2>{esRegistro ? "Crear cuenta" : "Iniciar sesión"}</h2>
-      <form onSubmit={manejarSubmit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ maxWidth: 400, margin: "40px auto", padding: 20 }}>
+      <h2 className="text-xl font-bold mb-4">Crear cuenta</h2>
+      <form onSubmit={handleRegistro}>
+        <input
+          type="text"
+          placeholder="Nombre de usuario"
+          value={nombreUsuario}
+          onChange={(e) => setNombreUsuario(e.target.value)}
+          required
+          style={{ display: "block", marginBottom: 10, width: "100%", padding: 8 }}
+        />
         <input
           type="email"
           placeholder="Correo electrónico"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
+          style={{ display: "block", marginBottom: 10, width: "100%", padding: 8 }}
         />
         <input
           type="password"
@@ -44,16 +98,23 @@ export default function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
+          style={{ display: "block", marginBottom: 10, width: "100%", padding: 8 }}
         />
-        <button type="submit">{esRegistro ? "Registrarme" : "Entrar"}</button>
-      </form>
-      <p style={{ marginTop: 10 }}>
-        {esRegistro ? "¿Ya tienes cuenta?" : "¿No tienes cuenta?"}{" "}
-        <button onClick={() => setEsRegistro(!esRegistro)} style={{ color: "blue", background: "none", border: "none", cursor: "pointer" }}>
-          {esRegistro ? "Inicia sesión" : "Regístrate"}
+        <button
+          type="submit"
+          style={{
+            padding: "10px 20px",
+            background: "#1f2937",
+            color: "#fff",
+            border: "none",
+            borderRadius: 4,
+            cursor: "pointer"
+          }}
+        >
+          Registrarse
         </button>
-      </p>
-      {error && <p style={{ color: "red" }}>{error}</p>}
+      </form>
+      {mensaje && <p style={{ marginTop: 15 }}>{mensaje}</p>}
     </div>
   );
 }
